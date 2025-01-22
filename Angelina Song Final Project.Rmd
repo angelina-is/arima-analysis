@@ -1,0 +1,78 @@
+---
+title: "eli review"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-05-25"
+---
+##2a) Analysis of my own dataset
+
+This dataset involves analyzing the number of shootings in NYC over time from January 2006 to December 2022. The data is taken from NYC's public data repository. I had to clean the data because the data before only gave me a table of 27,000 values of the date, time, location, etc. of the shooting. Thus the dataset I'm using is a self-modified version of the original one.
+```{r running SARIMA/ARIMA}
+library(astsa) #acf
+library(readr)
+library(tseries) #ADF test
+library(forecast) #auto.arima function
+
+#Reading the data into R as a time series
+dict <- read_csv("dict.csv")$Shootings 
+shootings_ts <- ts((dict), start=c(2006, 1), end=c(2023, 12), frequency=12) 
+
+#Plotting our shooting data as a time series
+plot(shootings_ts, xlab='Year', ylab='Number of Shootings', main='Monthly Shootings in NYC Jan 2006 - Dec 2023', col='steelblue1', xaxt='n')
+years <- seq(2006, 2023, by=1)
+for (year in years) {
+  abline(v=year, col="lightgray", lty=2)
+}
+axis(1, at=seq(2006, 2023, by=1), labels=seq(2006, 2023, by=1), cex.axis=0.7) 
+
+#Analysis of the data
+adf.test(shootings_ts) # adf gives result as stationary
+qqnorm(shootings_ts, main='QQ plot of Raw Data')
+qqline(shootings_ts) # the curve in the points indicates that data is not normal
+acf2(shootings_ts) # acf and pacf show heavy seasonality
+
+#Since the data is non-normal, we apply Box-Cox transformation
+shootings_ts1<-diff(log(shootings_ts))
+ts.plot(shootings_ts1, main="Differenced 1 Monthly Shootings in NYC Jan 2006 - Dec 2023")
+
+qqnorm(shootings_ts1, main='QQ Plot of Difference 1') #This plot looks much better, basically normal/stationary
+qqline(shootings_ts1)
+acf2(shootings_ts1, 12)
+# Since this doesn't give us a simple model for our SARIMA, we run auto.arima
+
+# Predictions
+shootings_modeled<-auto.arima(shootings_ts)
+checkresiduals(shootings_modeled) # statistically checking the model
+summary(shootings_modeled) # the residuals look normal 
+
+# Forecasting future 12 values
+future <- forecast(shootings_modeled, h = 12)
+print(future)
+
+plot(future, main='NYC Shootings Forecasted Values n=12', xlab = 'Year', ylab='Number of Shootings', xaxt='n')
+axis(1, at=seq(2006, 2024, by=1), labels=seq(2006, 2024, by=1), cex.axis=0.7) 
+
+
+```
+
+```{r 3.2 and 4.2 Spectral Analysis}
+weather_dict <- read_csv("new york.csv")$Value # I pulled in New York Weather Data from Jan 2006 - Dec 2023
+weather_ts <- ts((weather_dict), start=c(2006, 1), end=c(2024, 5), frequency=12) 
+
+sr = mvspec(cbind(weather_dict, dict), kernel("daniell",2), plot=FALSE)
+sr$df
+f = qf(.95, 2, sr$df-2)
+C = f/(18+f)
+plot(sr, plot.type = "coh", ci.lty = 2, main='Coherence Between Weather and Shootings')
+abline(h = C, col='pink')
+
+periodogram <- spec.pgram(shootings_ts1, plot=FALSE)
+plot(periodogram, log = "y", main = "Periodogram of Shootings") # Frequencies are especially strong every cycle
+
+x.spec <- spectrum(shootings_ts, main= "Spectral Analysis of NYC Shootings", log="no")
+x.logdif1 <- spectrum(shootings_ts1, main= "Log Spectral Analysis of NYC Shootings", log="no") # The transformed data provides clearer signals. We can see the dominant frequency occurs after one cycle. Additionally, there is a weaker peak at 5 cycles- which could be some other factor
+
+
+```
+
